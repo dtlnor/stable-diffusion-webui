@@ -74,6 +74,22 @@ def get_correct_sampler(p):
     elif isinstance(p, modules.api.processing.StableDiffusionProcessingAPI):
         return sd_samplers.samplers
 
+def ToImgae(tenosrObj, mode, path):
+    x_sample = torch.clamp((tenosrObj[0] + 1.0) / 2.0, min=0.0, max=1.0)
+    print("np.shape1-"+str(x_sample.shape))
+    if x_sample.shape[0] == 4:
+        # x_sample[1], x_sample[2], x_sample[3], x_sample[0]  = x_sample[0],  x_sample[1],  x_sample[2],  x_sample[3]
+        mode = "RGBA"
+        x_sample = 255. * np.moveaxis(x_sample.cpu().numpy(), 0, 2)
+
+    elif mode == "L":
+        x_sample = x_sample[0].cpu().numpy()
+    else:
+        x_sample = 255. * np.moveaxis(x_sample.cpu().numpy(), 0, 2)
+    print("np.shape2-"+str(x_sample.shape))
+    x_sample = x_sample.astype(np.uint8)
+    (Image.fromarray(x_sample)).convert(mode).save(path)
+    
 class StableDiffusionProcessing():
     """
     The first set of paramaters: sd_models -> do_not_reload_embeddings represent the minimum required to create a StableDiffusionProcessing
@@ -154,11 +170,24 @@ class StableDiffusionProcessing():
             # Dummy zero conditioning if we're not using inpainting model.
             return latent_image.new_zeros(latent_image.shape[0], 5, 1, 1)
 
+        outdir = opts.outdir_save + "/"
+
+        print(source_image.shape)
+        ToImgae(source_image, "RGB",outdir + "source_image.png")
+        print(latent_image.shape)
+        ToImgae(latent_image, "RGB",outdir + "latent_image.png")
+        sd_samplers.sample_to_image(latent_image).convert("RGBA").save(outdir + "latent_image_decode.png")
+
         # Handle the different mask inputs
         if image_mask is not None:
+
             if torch.is_tensor(image_mask):
                 conditioning_mask = image_mask
+                print(image_mask.shape)
+                ToImgae(image_mask, "RGB",outdir + "image_mask.png")
+                sd_samplers.sample_to_image(image_mask).convert("RGBA").save(outdir + "image_mask_decode.png")
             else:
+                image_mask.convert("RGB").save(outdir + "image_mask.png")
                 conditioning_mask = np.array(image_mask.convert("L"))
                 conditioning_mask = conditioning_mask.astype(np.float32) / 255.0
                 conditioning_mask = torch.from_numpy(conditioning_mask[None, None])
@@ -176,6 +205,12 @@ class StableDiffusionProcessing():
             source_image * (1.0 - conditioning_mask),
             getattr(self, "inpainting_mask_weight", shared.opts.inpainting_mask_weight)
         )
+
+        
+        print(conditioning_mask.shape)
+        ToImgae(conditioning_mask, "L", outdir + "conditioning_mask1.png")
+        print(conditioning_image.shape)
+        ToImgae(conditioning_image, "RGB",outdir + "conditioning_image.png")
         
         # Encode the new masked image using first stage of network.
         conditioning_image = self.sd_model.get_first_stage_encoding(self.sd_model.encode_first_stage(conditioning_image))
@@ -183,9 +218,13 @@ class StableDiffusionProcessing():
         # Create the concatenated conditioning tensor to be fed to `c_concat`
         conditioning_mask = torch.nn.functional.interpolate(conditioning_mask, size=latent_image.shape[-2:])
         conditioning_mask = conditioning_mask.expand(conditioning_image.shape[0], -1, -1, -1)
+        print(conditioning_mask.shape)
+        ToImgae(conditioning_mask, "L",outdir + "conditioning_mask2.png")
+
         image_conditioning = torch.cat([conditioning_mask, conditioning_image], dim=1)
         image_conditioning = image_conditioning.to(shared.device).type(self.sd_model.dtype)
 
+        # it is just conditioning_mask + conditioning_image, its 5 dim , so lazy to print
         return image_conditioning
 
     def init(self, all_prompts, all_seeds, all_subseeds):
@@ -829,6 +868,16 @@ class StableDiffusionProcessingImg2Img(StableDiffusionProcessing):
 
         self.init_latent = self.sd_model.get_first_stage_encoding(self.sd_model.encode_first_stage(image))
 
+        outdir = opts.outdir_save + "/"
+        import torchvision.transforms as T
+        
+        ToImgae(image, "RGB",outdir + "before_encode.png")
+        # print(image.shape)
+        T.ToPILImage()(self.init_latent[0]).convert("RGBA").save(outdir + "init_latent.png")
+        ToImgae(self.init_latent, "RGB", outdir + "init_latent_alt.png")
+        sd_samplers.sample_to_image(self.init_latent).convert("RGBA").save(outdir + "init_latent_decoded.png")
+
+
         if self.image_mask is not None:
             init_mask = latent_mask
             latmask = init_mask.convert('RGB').resize((self.init_latent.shape[3], self.init_latent.shape[2]))
@@ -840,11 +889,20 @@ class StableDiffusionProcessingImg2Img(StableDiffusionProcessing):
             self.mask = torch.asarray(1.0 - latmask).to(shared.device).type(self.sd_model.dtype)
             self.nmask = torch.asarray(latmask).to(shared.device).type(self.sd_model.dtype)
 
+            
             # this needs to be fixed to be done in sample() using actual seeds for batches
             if self.inpainting_fill == 2:
                 self.init_latent = self.init_latent * self.mask + create_random_tensors(self.init_latent.shape[1:], all_seeds[0:self.init_latent.shape[0]]) * self.nmask
+                # print(self.init_latent.shape)
+                T.ToPILImage()(self.init_latent[0]).convert("RGBA").save(outdir + "init_latent_MaskNoise.png")
+                ToImgae(self.init_latent, "RGB", outdir + "init_latent_MaskNoise_alt.png")
+                sd_samplers.sample_to_image(self.init_latent).convert("RGBA").save(outdir + "init_latent_MaskNoise_decoded.png")
             elif self.inpainting_fill == 3:
                 self.init_latent = self.init_latent * self.mask
+                # print(self.init_latent.shape)
+                T.ToPILImage()(self.init_latent[0]).convert("RGBA").save(outdir + "init_latent_MaskZeros.png")
+                ToImgae(self.init_latent, "RGB", outdir + "init_latent_MaskZeros_alt.png")
+                sd_samplers.sample_to_image(self.init_latent).convert("RGBA").save(outdir + "init_latent_MaskZeros_decoded.png")
 
         self.image_conditioning = self.img2img_image_conditioning(image, self.init_latent, self.image_mask)
 
