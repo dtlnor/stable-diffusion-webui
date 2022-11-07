@@ -153,7 +153,16 @@ document.addEventListener("DOMContentLoaded", function() {
 })
 
 function download_localization() {
-    text = JSON.stringify(dumpTranslations(), null, 4)
+    const unordered = dumpTranslations()
+    const ordered = Object.keys(unordered).sort().reduce(
+        (obj, key) => {
+            obj[key] = unordered[key];
+            return obj;
+        },
+        {}
+    );
+    
+    text = JSON.stringify(unordered, null, 4)
 
     var element = document.createElement('a');
     element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
