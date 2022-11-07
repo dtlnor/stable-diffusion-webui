@@ -1,0 +1,3 @@
+[submodule "extensions/stable-diffusion-webui-localization-zh_CN"]
+	path = extensions/stable-diffusion-webui-localization-zh_CN
+	url = https://github.com/dtlnor/stable-diffusion-webui-localization-zh_CN.git
