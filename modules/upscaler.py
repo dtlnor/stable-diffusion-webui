@@ -11,6 +11,9 @@ from modules import modelloader, shared
 
 LANCZOS = (Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
 NEAREST = (Image.Resampling.NEAREST if hasattr(Image, 'Resampling') else Image.NEAREST)
+BICUBIC = (Image.Resampling.BICUBIC if hasattr(Image, 'Resampling') else Image.BICUBIC)
+BOX = (Image.Resampling.BOX if hasattr(Image, 'Resampling') else Image.BOX)
+
 from modules.paths import models_path
 
 
@@ -118,7 +121,7 @@ class UpscalerNone(Upscaler):
 class UpscalerLanczos(Upscaler):
     scalers = []
 
-    def do_upscale(self, img, selected_model=None):
+    def do_upscale(self, img: Image.Image, selected_model=None):
         return img.resize((int(img.width * self.scale), int(img.height * self.scale)), resample=LANCZOS)
 
     def load_model(self, _):
@@ -133,7 +136,7 @@ class UpscalerLanczos(Upscaler):
 class UpscalerNearest(Upscaler):
     scalers = []
 
-    def do_upscale(self, img, selected_model=None):
+    def do_upscale(self, img: Image.Image, selected_model=None):
         return img.resize((int(img.width * self.scale), int(img.height * self.scale)), resample=NEAREST)
 
     def load_model(self, _):
@@ -143,3 +146,34 @@ class UpscalerNearest(Upscaler):
         super().__init__(False)
         self.name = "Nearest"
         self.scalers = [UpscalerData("Nearest", None, self)]
+
+
+class UpscalerBox(Upscaler):
+    scalers = []
+
+    def do_upscale(self, img: Image.Image, selected_model=None):
+        return img.resize((int(img.width * self.scale), int(img.height * self.scale)), resample=BOX)
+        
+    def load_model(self, _):
+        pass
+
+    def __init__(self, dirname=None):
+        super().__init__(False)
+        self.name = "Box"
+        self.scalers = [UpscalerData("Box", None, self)]
+
+
+class UpscalerBICUBIC(Upscaler):
+    scalers = []
+
+    def do_upscale(self, img: Image.Image, selected_model=None):
+        return img.resize((int(img.width * self.scale), int(img.height * self.scale)), resample=BICUBIC)
+        
+    def load_model(self, _):
+        pass
+
+    def __init__(self, dirname=None):
+        super().__init__(False)
+        self.name = "Bicubic"
+        self.scalers = [UpscalerData("Bicubic", None, self)]
+
