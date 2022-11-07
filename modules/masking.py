@@ -79,21 +79,33 @@ def expand_crop_region(crop_region, processing_width, processing_height, image_w
 
     return x1, y1, x2, y2
 
+from modules.shared import opts
 
 def fill(image, mask):
+    outdir = opts.outdir_save + "/"
+
+    image.convert("RGB").save(outdir+"input.png")
+    mask.convert("RGB").save(outdir+"mask.png")
     """fills masked regions with colors from image using blur. Not extremely effective."""
 
     image_mod = Image.new('RGBA', (image.width, image.height))
 
     image_masked = Image.new('RGBa', (image.width, image.height))
     image_masked.paste(image.convert("RGBA").convert("RGBa"), mask=ImageOps.invert(mask.convert('L')))
+    image_masked.convert("RGBA").save(outdir+"image_masked.png")
 
     image_masked = image_masked.convert('RGBa')
-
+    index = 0
     for radius, repeats in [(256, 1), (64, 1), (16, 2), (4, 4), (2, 2), (0, 1)]:
-        blurred = image_masked.filter(ImageFilter.GaussianBlur(radius)).convert('RGBA')
-        for _ in range(repeats):
-            image_mod.alpha_composite(blurred)
 
-    return image_mod.convert("RGB")
+        blurred = image_masked.filter(ImageFilter.GaussianBlur(radius)).convert('RGBA')
+        blurred.convert('RGBA').save(outdir+f"{index}(blur_{radius}).png")
+        for i in range(repeats):
+            image_mod.alpha_composite(blurred)
+            image_mod.convert('RGBA').save(outdir+f"{index}(blur_{radius})_(com_{i+1}).png")
+            index = index + 1
+
+    result = image_mod.convert("RGB")
+    result.save(outdir+"result.png")
+    return result
 
