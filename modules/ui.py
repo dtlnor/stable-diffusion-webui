@@ -5,6 +5,7 @@ import mimetypes
 import os
 import platform
 import random
+import re
 import subprocess as sp
 import sys
 import tempfile
@@ -659,6 +660,15 @@ Requested path was: {f}
                     html_info_x = gr.HTML()
                     html_info = gr.HTML()
                 parameters_copypaste.bind_buttons(buttons, result_gallery, "txt2img" if tabname == "txt2img" else None)
+
+
+                with gr.Row():
+                    convert = lambda name: int(name) if name.isdigit() else name.lower() 
+                    alphanumeric_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)] 
+                    emb_names =  sorted(model_hijack.embedding_db.word_embeddings.keys(), key = alphanumeric_key)
+                    gr.Text(value = ('\n'.join(emb_names)), label="My Embeddings:")
+                    
+
                 return result_gallery, generation_info if tabname != "extras" else html_info_x, html_info
 
 
@@ -669,6 +679,7 @@ def create_ui(wrap_gradio_gpu_call):
     reload_javascript()
 
     parameters_copypaste.reset()
+    sd_hijack.model_hijack.embedding_db.load_textual_inversion_embeddings()
 
     with gr.Blocks(analytics_enabled=False) as txt2img_interface:
         txt2img_prompt, roll, txt2img_prompt_style, txt2img_negative_prompt, txt2img_prompt_style2, submit, _, _, txt2img_prompt_style_apply, txt2img_save_style, txt2img_paste, token_counter, token_button = create_toprow(is_img2img=False)
@@ -1159,7 +1170,6 @@ def create_ui(wrap_gradio_gpu_call):
             with gr.Column(variant='panel'):
                 submit_result = gr.Textbox(elem_id="modelmerger_result", show_label=False)
 
-    sd_hijack.model_hijack.embedding_db.load_textual_inversion_embeddings()
 
     with gr.Blocks(analytics_enabled=False) as train_interface:
         with gr.Row().style(equal_height=False):
