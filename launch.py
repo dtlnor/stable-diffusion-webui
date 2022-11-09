@@ -87,16 +87,28 @@ def git_clone(url, dir, name, commithash=None):
     if commithash is not None:
         run(f'"{git}" -C {dir} checkout {commithash}', None, "Couldn't checkout {name}'s hash: {commithash}")
 
-        
+
+def get_symbolic_ref():
+    return run(f'"{git}" symbolic-ref --short HEAD').strip()
+
+
+def check_commit_in_current(commit):
+    return run(f'"{git}" branch {get_symbolic_ref()} --contains {commit}').strip()
+
+
 def version_check(commit):
     try:
         import requests
         commits = requests.get('https://api.github.com/repos/AUTOMATIC1111/stable-diffusion-webui/branches/master').json()
         if commit != "<none>" and commits['commit']['sha'] != commit:
-            print("--------------------------------------------------------")
-            print("| You are not up to date with the most recent release. |")
-            print("| Consider running `git pull` to update.               |")
-            print("--------------------------------------------------------")
+            crb = check_commit_in_current(commits['commit']['sha'])
+            if crb != "":
+                print(f"You({crb}) are up to date with the most recent master release.")
+            else:
+                print("--------------------------------------------------------")
+                print("| You are not up to date with the most recent release. |")
+                print("| Consider running `git pull` to update.               |")
+                print("--------------------------------------------------------")
         elif commits['commit']['sha'] == commit:
             print("You are up to date with the most recent release.")
         else:
