@@ -102,7 +102,7 @@ def version_check(commit):
         commits = requests.get('https://api.github.com/repos/AUTOMATIC1111/stable-diffusion-webui/branches/master').json()
         if commit != "<none>" and commits['commit']['sha'] != commit:
             crb = check_commit_in_current(commits['commit']['sha'])
-            if crb != "":
+            if crb != "" and 'error' not in crb:
                 print(f"You({crb}) are up to date with the most recent master release.")
             else:
                 print("--------------------------------------------------------")
