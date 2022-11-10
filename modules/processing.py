@@ -81,6 +81,10 @@ def ToImgae(tenosrObj, mode, path):
         # x_sample[1], x_sample[2], x_sample[3], x_sample[0]  = x_sample[0],  x_sample[1],  x_sample[2],  x_sample[3]
         mode = "RGBA"
         x_sample = 255. * np.moveaxis(x_sample.cpu().numpy(), 0, 2)
+        (Image.fromarray(x_sample[:,:,0].astype(np.uint8))).convert("L").save(path+".0.png")
+        (Image.fromarray(x_sample[:,:,1].astype(np.uint8))).convert("L").save(path+".1.png")
+        (Image.fromarray(x_sample[:,:,2].astype(np.uint8))).convert("L").save(path+".2.png")
+        (Image.fromarray(x_sample[:,:,3].astype(np.uint8))).convert("L").save(path+".3.png")
 
     elif mode == "L":
         x_sample = x_sample[0].cpu().numpy()
@@ -89,6 +93,7 @@ def ToImgae(tenosrObj, mode, path):
     print("np.shape2-"+str(x_sample.shape))
     x_sample = x_sample.astype(np.uint8)
     (Image.fromarray(x_sample)).convert(mode).save(path)
+
     
 class StableDiffusionProcessing():
     """
@@ -869,11 +874,11 @@ class StableDiffusionProcessingImg2Img(StableDiffusionProcessing):
         self.init_latent = self.sd_model.get_first_stage_encoding(self.sd_model.encode_first_stage(image))
 
         outdir = opts.outdir_save + "/"
-        import torchvision.transforms as T
+        # import torchvision.transforms as T
         
         ToImgae(image, "RGB",outdir + "before_encode.png")
         # print(image.shape)
-        T.ToPILImage()(self.init_latent[0]).convert("RGBA").save(outdir + "init_latent.png")
+        # T.ToPILImage()(self.init_latent[0]).convert("RGBA").save(outdir + "init_latent.png")
         ToImgae(self.init_latent, "RGB", outdir + "init_latent_alt.png")
         sd_samplers.sample_to_image(self.init_latent).convert("RGBA").save(outdir + "init_latent_decoded.png")
 

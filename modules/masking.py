@@ -106,6 +106,6 @@ def fill(image, mask):
             index = index + 1
 
     result = image_mod.convert("RGB")
-    result.save(outdir+"result.png")
+    result.save(outdir+"mask-result.png")
     return result
 
