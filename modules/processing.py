@@ -899,13 +899,13 @@ class StableDiffusionProcessingImg2Img(StableDiffusionProcessing):
             if self.inpainting_fill == 2:
                 self.init_latent = self.init_latent * self.mask + create_random_tensors(self.init_latent.shape[1:], all_seeds[0:self.init_latent.shape[0]]) * self.nmask
                 # print(self.init_latent.shape)
-                T.ToPILImage()(self.init_latent[0]).convert("RGBA").save(outdir + "init_latent_MaskNoise.png")
+                # T.ToPILImage()(self.init_latent[0]).convert("RGBA").save(outdir + "init_latent_MaskNoise.png")
                 ToImgae(self.init_latent, "RGB", outdir + "init_latent_MaskNoise_alt.png")
                 sd_samplers.sample_to_image(self.init_latent).convert("RGBA").save(outdir + "init_latent_MaskNoise_decoded.png")
             elif self.inpainting_fill == 3:
                 self.init_latent = self.init_latent * self.mask
                 # print(self.init_latent.shape)
-                T.ToPILImage()(self.init_latent[0]).convert("RGBA").save(outdir + "init_latent_MaskZeros.png")
+                # T.ToPILImage()(self.init_latent[0]).convert("RGBA").save(outdir + "init_latent_MaskZeros.png")
                 ToImgae(self.init_latent, "RGB", outdir + "init_latent_MaskZeros_alt.png")
                 sd_samplers.sample_to_image(self.init_latent).convert("RGBA").save(outdir + "init_latent_MaskZeros_decoded.png")
 
