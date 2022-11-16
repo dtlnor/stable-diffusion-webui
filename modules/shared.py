@@ -89,6 +89,7 @@ parser.add_argument("--cors-allow-origins", type=str, help="Allowed CORS origins
 parser.add_argument("--tls-keyfile", type=str, help="Partially enables TLS, requires --tls-certfile to fully function", default=None)
 parser.add_argument("--tls-certfile", type=str, help="Partially enables TLS, requires --tls-keyfile to fully function", default=None)
 parser.add_argument("--server-name", type=str, help="Sets hostname of server", default=None)
+parser.add_argument("--no-parallel", action='store_true', help="To allow preview every steps")
 
 script_loading.preload_extensions(extensions.extensions_dir, parser)
 
@@ -115,7 +116,7 @@ device = devices.device
 weight_load_location = None if cmd_opts.lowram else "cpu"
 
 batch_cond_uncond = cmd_opts.always_batch_cond_uncond or not (cmd_opts.lowvram or cmd_opts.medvram)
-parallel_processing_allowed = not cmd_opts.lowvram and not cmd_opts.medvram
+parallel_processing_allowed = not cmd_opts.lowvram and not cmd_opts.medvram and not cmd_opts.no_parallel
 xformers_available = False
 config_filename = cmd_opts.ui_settings_file
 

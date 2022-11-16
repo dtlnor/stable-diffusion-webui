@@ -10,6 +10,9 @@ import ldm.models.diffusion.ddim
 import ldm.models.diffusion.plms
 from modules import prompt_parser, devices, processing, images
 
+import os
+import matplotlib.pyplot as plt
+
 from modules.shared import opts, cmd_opts, state
 import modules.shared as shared
 from modules.script_callbacks import CFGDenoiserParams, cfg_denoiser_callback
@@ -104,6 +107,16 @@ def sample_to_image(samples, index=0):
 def samples_to_image_grid(samples):
     return images.image_grid([single_sample_to_image(sample) for sample in samples])
 
+def show(x, title=''):
+    IMG_SAVE_PATH = opts.outdir_save
+    x_np = x.squeeze().cpu().numpy()
+    for i in range(4):
+        plt.subplot(2, 2, i+1)
+        plt.imshow(x_np[i])
+    plt.suptitle(title)
+    plt.savefig(os.path.join(IMG_SAVE_PATH, f'{title}.png'))
+    # plt.show()
+    
 
 def store_latent(decoded):
     state.current_latent = decoded
@@ -111,6 +124,9 @@ def store_latent(decoded):
     if opts.show_progress_every_n_steps > 0 and shared.state.sampling_step % opts.show_progress_every_n_steps == 0:
         if not shared.parallel_processing_allowed:
             shared.state.current_image = sample_to_image(decoded)
+            outdir = opts.outdir_save + "/"
+            show(decoded, f"latent_step_{shared.state.sampling_step}")
+            shared.state.current_image.convert("RGB").save(outdir + f"decoded_step_{shared.state.sampling_step}.png")
 
 
 class InterruptedException(BaseException):
