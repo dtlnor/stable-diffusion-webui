@@ -70,8 +70,11 @@ sample_img2img = sample_img2img if os.path.exists(sample_img2img) else None
 css_hide_progressbar = """
 .wrap .m-12 svg { display:none!important; }
 .wrap .m-12::before { content:"Loading..." }
+.wrap .z-20 svg { display:none!important; }
+.wrap .z-20::before { content:"Loading..." }
 .progress-bar { display:none!important; }
 .meta-text { display:none!important; }
+.meta-text-center { display:none!important; }
 """
 
 # Using constants for these since the variation selector isn't visible.
@@ -143,7 +146,7 @@ def save_files(js_data, images, do_make_zip, index):
                 filenames.append(os.path.basename(txt_fullfn))
                 fullfns.append(txt_fullfn)
 
-        writer.writerow([data["prompt"], data["seed"], data["width"], data["height"], data["sampler"], data["cfg_scale"], data["steps"], filenames[0], data["negative_prompt"]])
+        writer.writerow([data["prompt"], data["seed"], data["width"], data["height"], data["sampler_name"], data["cfg_scale"], data["steps"], filenames[0], data["negative_prompt"]])
 
     # Make Zip
     if do_make_zip:
@@ -1259,7 +1262,9 @@ def create_ui(wrap_gradio_gpu_call):
                             gr.HTML(value="")
 
                         with gr.Column():
-                            run_preprocess = gr.Button(value="Preprocess", variant='primary')
+                            with gr.Row():
+                                interrupt_preprocessing = gr.Button("Interrupt")
+                                run_preprocess = gr.Button(value="Preprocess", variant='primary')
 
                     process_split.change(
                         fn=lambda show: gr_show(show),
@@ -1432,6 +1437,12 @@ def create_ui(wrap_gradio_gpu_call):
             outputs=[],
         )
 
+        interrupt_preprocessing.click(
+            fn=lambda: shared.state.interrupt(),
+            inputs=[],
+            outputs=[],
+        )
+
     def create_setting_component(key, is_quicksettings=False):
         def fun():
             return opts.data[key] if key in opts.data else opts.data_labels[key].default
@@ -1483,16 +1494,9 @@ def create_ui(wrap_gradio_gpu_call):
             if comp == dummy_component:
                 continue
 
-            oldval = opts.data.get(key, None)
-            try:
-                setattr(opts, key, value)
-            except RuntimeError:
-                continue
-            if oldval != value:
-                if opts.data_labels[key].onchange is not None:
-                    opts.data_labels[key].onchange()
-
+            if opts.set(key, value):
                 changed.append(key)
+
         try:
             opts.save(shared.config_filename)
         except RuntimeError:
@@ -1503,15 +1507,8 @@ def create_ui(wrap_gradio_gpu_call):
         if not opts.same_type(value, opts.data_labels[key].default):
             return gr.update(visible=True), opts.dumpjson()
 
-        oldval = opts.data.get(key, None)
-        try:
-            setattr(opts, key, value)
-        except Exception:
-            return gr.update(value=oldval), opts.dumpjson()
-
-        if oldval != value:
-            if opts.data_labels[key].onchange is not None:
-                opts.data_labels[key].onchange()
+        if not opts.set(key, value):
+            return gr.update(value=getattr(opts, key)), opts.dumpjson()
 
         opts.save(shared.config_filename)
 
