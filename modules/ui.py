@@ -158,22 +158,6 @@ def save_files(js_data, images, do_make_zip, index):
 
     return gr.File.update(value=fullfns, visible=True), '', '', plaintext_to_html(f"Saved: {filenames[0]}")
 
-def save_pil_to_file(pil_image, dir=None):
-    use_metadata = False
-    metadata = PngImagePlugin.PngInfo()
-    for key, value in pil_image.info.items():
-        if isinstance(key, str) and isinstance(value, str):
-            metadata.add_text(key, value)
-            use_metadata = True
-
-    file_obj = tempfile.NamedTemporaryFile(delete=False, suffix=".png", dir=dir)
-    pil_image.save(file_obj, pnginfo=(metadata if use_metadata else None))
-    return file_obj
-
-
-# override save to file function so that it also writes PNG info
-gr.processing_utils.save_pil_to_file = save_pil_to_file
-
 
 def wrap_gradio_call(func, extra_outputs=None, add_stats=False):
     def f(*args, extra_outputs_array=extra_outputs, **kwargs):
@@ -1071,6 +1055,7 @@ def create_ui(wrap_gradio_gpu_call):
                 (seed_resize_from_w, "Seed resize from-1"),
                 (seed_resize_from_h, "Seed resize from-2"),
                 (denoising_strength, "Denoising strength"),
+                (mask_blur, "Mask blur"),
                 *modules.scripts.scripts_img2img.infotext_fields
             ]
             parameters_copypaste.add_paste_fields("img2img", init_img, img2img_paste_fields)
@@ -1191,7 +1176,11 @@ def create_ui(wrap_gradio_gpu_call):
                 custom_name = gr.Textbox(label="Custom Name (Optional)")
                 interp_amount = gr.Slider(minimum=0.0, maximum=1.0, step=0.05, label='Multiplier (M) - set to 0 to get model A', value=0.3)
                 interp_method = gr.Radio(choices=["Weighted sum", "Add difference"], value="Weighted sum", label="Interpolation Method")
-                save_as_half = gr.Checkbox(value=False, label="Save as float16")
+
+                with gr.Row():
+                    checkpoint_format = gr.Radio(choices=["ckpt", "safetensors"], value="ckpt", label="Checkpoint format")
+                    save_as_half = gr.Checkbox(value=False, label="Save as float16")
+
                 modelmerger_merge = gr.Button(elem_id="modelmerger_merge", label="Merge", variant='primary')
 
             with gr.Column(variant='panel'):
@@ -1220,7 +1209,7 @@ def create_ui(wrap_gradio_gpu_call):
 
                 with gr.Tab(label="Create hypernetwork"):
                     new_hypernetwork_name = gr.Textbox(label="Name")
-                    new_hypernetwork_sizes = gr.CheckboxGroup(label="Modules", value=["768", "320", "640", "1280"], choices=["768", "320", "640", "1280"])
+                    new_hypernetwork_sizes = gr.CheckboxGroup(label="Modules", value=["768", "320", "640", "1280"], choices=["768", "1024", "320", "640", "1280"])
                     new_hypernetwork_layer_structure = gr.Textbox("1, 2, 1", label="Enter hypernetwork layer structure", placeholder="1st and last digit must be 1. ex:'1, 2, 1'")
                     new_hypernetwork_activation_func = gr.Dropdown(value="linear", label="Select activation function of hypernetwork. Recommended : Swish / Linear(none)", choices=modules.hypernetworks.ui.keys)
                     new_hypernetwork_initialization_option = gr.Dropdown(value = "Normal", label="Select Layer weights initialization. Recommended: Kaiming for relu-like, Xavier for sigmoid-like, Normal otherwise", choices=["Normal", "KaimingUniform", "KaimingNormal", "XavierUniform", "XavierNormal"])
@@ -1266,7 +1255,7 @@ def create_ui(wrap_gradio_gpu_call):
                         with gr.Column():
                             with gr.Row():
                                 interrupt_preprocessing = gr.Button("Interrupt")
-                                run_preprocess = gr.Button(value="Preprocess", variant='primary')
+                            run_preprocess = gr.Button(value="Preprocess", variant='primary')
 
                     process_split.change(
                         fn=lambda show: gr_show(show),
@@ -1293,6 +1282,7 @@ def create_ui(wrap_gradio_gpu_call):
                         hypernetwork_learn_rate = gr.Textbox(label='Hypernetwork Learning rate', placeholder="Hypernetwork Learning rate", value="0.00001")
 
                     batch_size = gr.Number(label='Batch size', value=1, precision=0)
+                    gradient_step = gr.Number(label='Gradient accumulation steps', value=1, precision=0)
                     dataset_directory = gr.Textbox(label='Dataset directory', placeholder="Path to directory with input images")
                     log_directory = gr.Textbox(label='Log directory', placeholder="Path to directory where to write outputs", value="textual_inversion")
                     template_file = gr.Textbox(label='Prompt template file', value=os.path.join(script_path, "textual_inversion_templates", "style_filewords.txt"))
@@ -1303,6 +1293,11 @@ def create_ui(wrap_gradio_gpu_call):
                     save_embedding_every = gr.Number(label='Save a copy of embedding to log directory every N steps, 0 to disable', value=500, precision=0)
                     save_image_with_stored_embedding = gr.Checkbox(label='Save images with embedding in PNG chunks', value=True)
                     preview_from_txt2img = gr.Checkbox(label='Read parameters (prompt, etc...) from txt2img tab when making previews', value=False)
+                    with gr.Row():
+                        shuffle_tags = gr.Checkbox(label="Shuffle tags by ',' when creating prompts.", value=False)
+                        tag_drop_out = gr.Slider(minimum=0, maximum=1, step=0.1, label="Drop out tags when creating prompts.", value=0)
+                    with gr.Row():
+                        latent_sampling_method = gr.Radio(label='Choose latent sampling method', value="once", choices=['once', 'deterministic', 'random'])
 
                     with gr.Row():
                         interrupt_training = gr.Button(value="Interrupt")
@@ -1391,11 +1386,15 @@ def create_ui(wrap_gradio_gpu_call):
                 train_embedding_name,
                 embedding_learn_rate,
                 batch_size,
+                gradient_step,
                 dataset_directory,
                 log_directory,
                 training_width,
                 training_height,
                 steps,
+                shuffle_tags,
+                tag_drop_out,
+                latent_sampling_method,
                 create_image_every,
                 save_embedding_every,
                 template_file,
@@ -1416,11 +1415,15 @@ def create_ui(wrap_gradio_gpu_call):
                 train_hypernetwork_name,
                 hypernetwork_learn_rate,
                 batch_size,
+                gradient_step,
                 dataset_directory,
                 log_directory,
                 training_width,
                 training_height,
                 steps,
+                shuffle_tags,
+                tag_drop_out,
+                latent_sampling_method,
                 create_image_every,
                 save_embedding_every,
                 template_file,
@@ -1704,6 +1707,7 @@ def create_ui(wrap_gradio_gpu_call):
                 interp_amount,
                 save_as_half,
                 custom_name,
+                checkpoint_format,
             ],
             outputs=[
                 submit_result,
