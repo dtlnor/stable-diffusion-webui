@@ -13,7 +13,7 @@ import tqdm
 from einops import rearrange, repeat
 from ldm.util import default
 from modules import devices, processing, sd_models, shared, sd_samplers
-from modules.textual_inversion import textual_inversion
+from modules.textual_inversion import textual_inversion, logging
 from modules.textual_inversion.learn_schedule import LearnRateScheduler
 from torch import einsum
 from torch.nn.init import normal_, xavier_normal_, xavier_uniform_, kaiming_normal_, kaiming_uniform_, zeros_
@@ -277,7 +277,7 @@ def load_hypernetwork(filename):
             print(traceback.format_exc(), file=sys.stderr)
     else:
         if shared.loaded_hypernetwork is not None:
-            print(f"Unloading hypernetwork")
+            print("Unloading hypernetwork")
 
         shared.loaded_hypernetwork = None
 
@@ -378,8 +378,32 @@ def report_statistics(loss_info:dict):
             print(e)
 
 
+def create_hypernetwork(name, enable_sizes, overwrite_old, layer_structure=None, activation_func=None, weight_init=None, add_layer_norm=False, use_dropout=False):
+    # Remove illegal characters from name.
+    name = "".join( x for x in name if (x.isalnum() or x in "._- "))
 
-def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root, log_directory, training_width, training_height, steps, shuffle_tags, tag_drop_out, latent_sampling_method, create_image_every, save_hypernetwork_every, template_file, preview_from_txt2img, preview_prompt, preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale, preview_seed, preview_width, preview_height):
+    fn = os.path.join(shared.cmd_opts.hypernetwork_dir, f"{name}.pt")
+    if not overwrite_old:
+        assert not os.path.exists(fn), f"file {fn} already exists"
+
+    if type(layer_structure) == str:
+        layer_structure = [float(x.strip()) for x in layer_structure.split(",")]
+
+    hypernet = modules.hypernetworks.hypernetwork.Hypernetwork(
+        name=name,
+        enable_sizes=[int(x) for x in enable_sizes],
+        layer_structure=layer_structure,
+        activation_func=activation_func,
+        weight_init=weight_init,
+        add_layer_norm=add_layer_norm,
+        use_dropout=use_dropout,
+    )
+    hypernet.save(fn)
+
+    shared.reload_hypernetworks()
+
+
+def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step, data_root, log_directory, training_width, training_height, steps, clip_grad_mode, clip_grad_value, shuffle_tags, tag_drop_out, latent_sampling_method, create_image_every, save_hypernetwork_every, template_file, preview_from_txt2img, preview_prompt, preview_negative_prompt, preview_steps, preview_sampler_index, preview_cfg_scale, preview_seed, preview_width, preview_height):
     # images allows training previews to have infotext. Importing it at the top causes a circular import problem.
     from modules import images
 
@@ -391,6 +415,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
     shared.loaded_hypernetwork = Hypernetwork()
     shared.loaded_hypernetwork.load(path)
 
+    shared.state.job = "train-hypernetwork"
     shared.state.textinfo = "Initializing hypernetwork training..."
     shared.state.job_count = steps
 
@@ -417,10 +442,14 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
 
     initial_step = hypernetwork.step or 0
     if initial_step >= steps:
-        shared.state.textinfo = f"Model has already been trained beyond specified max steps"
+        shared.state.textinfo = "Model has already been trained beyond specified max steps"
         return hypernetwork, filename
 
     scheduler = LearnRateScheduler(learn_rate, steps, initial_step)
+    
+    clip_grad = torch.nn.utils.clip_grad_value_ if clip_grad_mode == "value" else torch.nn.utils.clip_grad_norm_ if clip_grad_mode == "norm" else None
+    if clip_grad:
+        clip_grad_sched = LearnRateScheduler(clip_grad_value, steps, initial_step, verbose=False)
 
     # dataset loading may take a while, so input validations and early returns should be done before this
     shared.state.textinfo = f"Preparing dataset from {html.escape(data_root)}..."
@@ -428,7 +457,14 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
     pin_memory = shared.opts.pin_memory
 
     ds = modules.textual_inversion.dataset.PersonalizedBase(data_root=data_root, width=training_width, height=training_height, repeats=shared.opts.training_image_repeats_per_epoch, placeholder_token=hypernetwork_name, model=shared.sd_model, cond_model=shared.sd_model.cond_stage_model, device=devices.device, template_file=template_file, include_cond=True, batch_size=batch_size, gradient_step=gradient_step, shuffle_tags=shuffle_tags, tag_drop_out=tag_drop_out, latent_sampling_method=latent_sampling_method)
-    
+
+    if shared.opts.save_training_settings_to_txt:
+        saved_params = dict(
+            model_name=checkpoint.model_name, model_hash=checkpoint.hash, num_of_dataset_images=len(ds),
+            **{field: getattr(hypernetwork, field) for field in ['layer_structure', 'activation_func', 'weight_init', 'add_layer_norm', 'use_dropout', ]}
+        )
+        logging.save_settings_to_file(log_directory, {**saved_params, **locals()})
+
     latent_sampling_method = ds.latent_sampling_method
 
     dl = modules.textual_inversion.dataset.PersonalizedDataLoader(ds, latent_sampling_method=latent_sampling_method, batch_size=ds.batch_size, pin_memory=pin_memory)
@@ -439,7 +475,7 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
         shared.parallel_processing_allowed = False
         shared.sd_model.cond_stage_model.to(devices.cpu)
         shared.sd_model.first_stage_model.to(devices.cpu)
-    
+
     weights = hypernetwork.weights()
     hypernetwork.train_mode()
 
@@ -498,6 +534,9 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
                 if shared.state.interrupted:
                     break
 
+                if clip_grad:
+                    clip_grad_sched.step(hypernetwork.step)
+                
                 with devices.autocast():
                     x = batch.latent_sample.to(devices.device, non_blocking=pin_memory)
                     if tag_drop_out != 0 or shuffle_tags:
@@ -512,14 +551,14 @@ def train_hypernetwork(hypernetwork_name, learn_rate, batch_size, gradient_step,
 
                     _loss_step += loss.item()
                 scaler.scale(loss).backward()
+                
                 # go back until we reach gradient accumulation steps
                 if (j + 1) % gradient_step != 0:
                     continue
-                # print(f"grad:{weights[0].grad.detach().cpu().abs().mean().item():.7f}")
-                # scaler.unscale_(optimizer)
-                # print(f"grad:{weights[0].grad.detach().cpu().abs().mean().item():.15f}")
-                # torch.nn.utils.clip_grad_norm_(weights, max_norm=1.0)
-                # print(f"grad:{weights[0].grad.detach().cpu().abs().mean().item():.15f}")
+
+                if clip_grad:
+                    clip_grad(weights, clip_grad_sched.learn_rate)
+                
                 scaler.step(optimizer)
                 scaler.update()
                 hypernetwork.step += 1
