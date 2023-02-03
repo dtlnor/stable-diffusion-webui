@@ -132,7 +132,11 @@ onUiUpdate(function(){
 		}
 
 		if(tooltip){
-			span.title = tooltip;
+            if (tooltip in localization){
+                span.title = localization[tooltip]
+            }else{
+                span.title = tooltip;
+            }
 		}
 	})
 
