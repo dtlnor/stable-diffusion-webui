@@ -42,7 +42,7 @@ class Upscaler:
         self.mod_scale = None
 
         if self.model_path is None and self.name:
-            self.model_path = os.path.join(models_path, self.name)
+            self.model_path = os.path.join(shared.models_path, self.name)
         if self.model_path and create_dirs:
             os.makedirs(self.model_path, exist_ok=True)
 
@@ -98,6 +98,7 @@ class UpscalerData:
     def __init__(self, name: str, path: str, upscaler: Upscaler = None, scale: int = 4, model=None):
         self.name = name
         self.data_path = path
+        self.local_data_path = path
         self.scaler = upscaler
         self.scale = scale
         self.model = model
