@@ -177,6 +177,7 @@ def get_symbolic_ref():
 def check_commit_in_current(commit):
     return run(f'"{git}" branch {get_symbolic_ref()} --contains {commit}').strip()
 
+
 def git_pull_recursive(dir):
     for subdir, _, _ in os.walk(dir):
         if os.path.exists(os.path.join(subdir, '.git')):
