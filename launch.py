@@ -290,6 +290,7 @@ def prepare_environment():
     commit = commit_hash()
 
     print(f"Python {sys.version}")
+    print(f"Python Path: {python}")
     print(f"Commit hash: {commit}")
 
     if reinstall_torch or not is_installed("torch") or not is_installed("torchvision"):
