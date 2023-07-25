@@ -172,21 +172,34 @@ def git_pull_recursive(dir):
                 print(f"Couldn't perform 'git pull' on repository in '{subdir}':\n{e.output.decode('utf-8').strip()}\n")
 
 
+def get_symbolic_ref():
+    return run(f'"{git}" symbolic-ref --short HEAD').strip()
+
+
+def check_commit_in_current(commit):
+    return run(f'"{git}" branch {get_symbolic_ref()} --contains {commit}').strip()
+
+
 def version_check(commit):
     try:
         import requests
         commits = requests.get('https://api.github.com/repos/AUTOMATIC1111/stable-diffusion-webui/branches/master').json()
         if commit != "<none>" and commits['commit']['sha'] != commit:
-            print("--------------------------------------------------------")
-            print("| You are not up to date with the most recent release. |")
-            print("| Consider running `git pull` to update.               |")
-            print("--------------------------------------------------------")
+            crb = check_commit_in_current(commits['commit']['sha'])
+            if crb != "" and 'error' not in crb:
+                print(f"You({crb}) are up to date with the most recent master release.")
+            else:
+                print("--------------------------------------------------------")
+                print("| You are not up to date with the most recent release. |")
+                print("| Consider running `git pull` to update.               |")
+                print("--------------------------------------------------------")
         elif commits['commit']['sha'] == commit:
             print("You are up to date with the most recent release.")
         else:
             print("Not a git clone, can't perform version check.")
     except Exception as e:
         print("version check failed", e)
+
 
 
 def run_extension_installer(extension_dir):
