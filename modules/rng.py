@@ -1,6 +1,19 @@
 import torch
 
 from modules import devices, rng_philox, shared
+from modules.shared import opts, cmd_opts, state
+
+
+def show_latent(x, title=''):
+    import os
+    import matplotlib.pyplot as plt
+    x_np = x.squeeze().cpu().numpy()
+    for i in range(4):
+        plt.subplot(2, 2, i+1)
+        plt.imshow(x_np[i])
+    plt.suptitle(title)
+    plt.savefig(os.path.join(opts.outdir_save, f'{title}.png'))
+    # plt.show()
 
 
 def randn(seed, shape, generator=None):
@@ -129,18 +142,47 @@ class ImageRNG:
                 noise = slerp(self.subseed_strength, noise, subnoise)
 
             if noise_shape != self.shape:
+                # get target size noise pattern from ori seed
                 x = randn(seed, self.shape, generator=generator)
+                # dx,dy = border? length
+                # print("noise_shape "+str(noise_shape))
+                # print("shape "+str(shape))
                 dx = (self.shape[2] - noise_shape[2]) // 2
                 dy = (self.shape[1] - noise_shape[1]) // 2
+                # print("shape[2] "+str(shape[2]))
+                # print("shape[1] "+str(shape[1]))
+                # print("dx "+str(dx))
+                # print("dy "+str(dy))
+                # if enlarge, w = noise width(the smaller one),
+                # if shrink, w = target width(the smaller one)
                 w = noise_shape[2] if dx >= 0 else noise_shape[2] + 2 * dx
                 h = noise_shape[1] if dy >= 0 else noise_shape[1] + 2 * dy
+                # print("w "+str(w))
+                # print("h "+str(h))
+                # if enlarge, dx, else 0
                 tx = 0 if dx < 0 else dx
                 ty = 0 if dy < 0 else dy
+                # print("tx "+str(tx))
+                # print("ty "+str(ty))
+                # if shrink, abs(dx), else 0
                 dx = max(-dx, 0)
                 dy = max(-dy, 0)
+                # print("dx "+str(dx))
+                # print("dy "+str(dy))
 
+                # x is target shape, noise is noise shape.
+                # enlarge = dx:dx+h = 0:0+h, fill ori noise to target noise center area
+                # shrink = 0:0+h = dx:dx+h, fill center area noise to target area.
+                # print("x "+str(x.shape))
+                # print("noise "+str(noise.shape))
+
+                # show_latent(x,"x")
+                # show_latent(noise,"noise")
+            
                 x[:, ty:ty + h, tx:tx + w] = noise[:, dy:dy + h, dx:dx + w]
                 noise = x
+                # print("final "+str(noise.shape))
+                # show_latent(noise,"final")
 
             xs.append(noise)
 
