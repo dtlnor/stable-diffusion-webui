@@ -132,7 +132,7 @@ Requested path was: {f}
 
     with gr.Column(variant='panel', elem_id=f"{tabname}_results"):
         with gr.Group(elem_id=f"{tabname}_gallery_container"):
-            result_gallery = gr.Gallery(label='Output', show_label=False, elem_id=f"{tabname}_gallery", columns=4)
+            result_gallery = gr.Gallery(label='Output', show_label=False, elem_id=f"{tabname}_gallery", columns=4, preview=True, height=shared.opts.gallery_height or None)
 
         generation_info = None
         with gr.Column():
@@ -261,7 +261,7 @@ def setup_dialog(button_show, dialog, *, button_close=None):
         fn=lambda: gr.update(visible=True),
         inputs=[],
         outputs=[dialog],
-    ).then(fn=None, _js="function(){ popup(gradioApp().getElementById('" + dialog.elem_id + "')); }")
+    ).then(fn=None, _js="function(){ popupId('" + dialog.elem_id + "'); }")
 
     if button_close:
         button_close.click(fn=None, _js="closePopup")

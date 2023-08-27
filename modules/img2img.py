@@ -10,6 +10,7 @@ from modules import images as imgutil
 from modules.generation_parameters_copypaste import create_override_settings_dict, parse_generation_parameters
 from modules.processing import Processed, StableDiffusionProcessingImg2Img, process_images
 from modules.shared import opts, state
+from modules.sd_models import get_closet_checkpoint_match
 import modules.shared as shared
 import modules.processing as processing
 from modules.ui import plaintext_to_html
@@ -41,7 +42,8 @@ def process_batch(p, input_dir, output_dir, inpaint_mask_dir, args, to_scale=Fal
     cfg_scale = p.cfg_scale
     sampler_name = p.sampler_name
     steps = p.steps
-
+    override_settings = p.override_settings
+    sd_model_checkpoint_override = get_closet_checkpoint_match(override_settings.get("sd_model_checkpoint", None))
     for i, image in enumerate(images):
         state.job = f"{i+1} out of {len(images)}"
         if state.skipped:
@@ -104,6 +106,14 @@ def process_batch(p, input_dir, output_dir, inpaint_mask_dir, args, to_scale=Fal
             p.sampler_name = parsed_parameters.get("Sampler", sampler_name)
             p.steps = int(parsed_parameters.get("Steps", steps))
 
+            model_info = get_closet_checkpoint_match(parsed_parameters.get("Model hash", None))
+            if model_info is not None:
+                p.override_settings['sd_model_checkpoint'] = model_info.name
+            elif sd_model_checkpoint_override:
+                p.override_settings['sd_model_checkpoint'] = sd_model_checkpoint_override
+            else:
+                p.override_settings.pop("sd_model_checkpoint", None)
+
         proc = modules.scripts.scripts_img2img.run(p, *args)
         if proc is None:
             if output_dir:
@@ -122,15 +132,14 @@ def img2img(id_task: str, mode: int, prompt: str, negative_prompt: str, prompt_s
     is_batch = mode == 5
 
     if mode == 0:  # img2img
-        image = init_img.convert("RGB")
+        image = init_img
         mask = None
     elif mode == 1:  # img2img sketch
-        image = sketch.convert("RGB")
+        image = sketch
         mask = None
     elif mode == 2:  # inpaint
         image, mask = init_img_with_mask["image"], init_img_with_mask["mask"]
         mask = processing.create_binary_mask(mask)
-        image = image.convert("RGB")
     elif mode == 3:  # inpaint sketch
         image = inpaint_color_sketch
         orig = inpaint_color_sketch_orig or inpaint_color_sketch
@@ -139,7 +148,6 @@ def img2img(id_task: str, mode: int, prompt: str, negative_prompt: str, prompt_s
         mask = ImageEnhance.Brightness(mask).enhance(1 - mask_alpha / 100)
         blur = ImageFilter.GaussianBlur(mask_blur)
         image = Image.composite(image.filter(blur), orig, mask.filter(blur))
-        image = image.convert("RGB")
     elif mode == 4:  # inpaint upload mask
         image = init_img_inpaint
         mask = init_mask_inpaint

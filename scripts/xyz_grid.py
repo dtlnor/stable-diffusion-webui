@@ -200,6 +200,10 @@ def list_to_csv_string(data_list):
         return o.getvalue().strip()
 
 
+def csv_string_to_list_strip(data_str):
+    return list(map(str.strip, chain.from_iterable(csv.reader(StringIO(data_str)))))
+
+
 class AxisOption:
     def __init__(self, label, type, apply, format_value=format_value_add_label, confirm=None, cost=0.0, choices=None):
         self.label = label
@@ -234,9 +238,9 @@ axis_options = [
     AxisOptionImg2Img("Image CFG Scale", float, apply_field("image_cfg_scale")),
     AxisOption("Prompt S/R", str, apply_prompt, format_value=format_value),
     AxisOption("Prompt order", str_permutations, apply_order, format_value=format_value_join_list),
-    AxisOptionTxt2Img("Sampler", str, apply_field("sampler_name"), format_value=format_value, confirm=confirm_samplers, choices=lambda: [x.name for x in sd_samplers.samplers]),
-    AxisOptionTxt2Img("Hires sampler", str, apply_field("hr_sampler_name"), confirm=confirm_samplers, choices=lambda: [x.name for x in sd_samplers.samplers_for_img2img]),
-    AxisOptionImg2Img("Sampler", str, apply_field("sampler_name"), format_value=format_value, confirm=confirm_samplers, choices=lambda: [x.name for x in sd_samplers.samplers_for_img2img]),
+    AxisOptionTxt2Img("Sampler", str, apply_field("sampler_name"), format_value=format_value, confirm=confirm_samplers, choices=lambda: [x.name for x in sd_samplers.samplers if x.name not in opts.hide_samplers]),
+    AxisOptionTxt2Img("Hires sampler", str, apply_field("hr_sampler_name"), confirm=confirm_samplers, choices=lambda: [x.name for x in sd_samplers.samplers_for_img2img if x.name not in opts.hide_samplers]),
+    AxisOptionImg2Img("Sampler", str, apply_field("sampler_name"), format_value=format_value, confirm=confirm_samplers, choices=lambda: [x.name for x in sd_samplers.samplers_for_img2img if x.name not in opts.hide_samplers]),
     AxisOption("Checkpoint name", str, apply_checkpoint, format_value=format_remove_path, confirm=confirm_checkpoints, cost=1.0, choices=lambda: sorted(sd_models.checkpoints_list, key=str.casefold)),
     AxisOption("Negative Guidance minimum sigma", float, apply_field("s_min_uncond")),
     AxisOption("Sigma Churn", float, apply_field("s_churn")),
@@ -263,6 +267,7 @@ axis_options = [
     AxisOption("Always discard next-to-last sigma", str, apply_override('always_discard_next_to_last_sigma', boolean=True), choices=boolean_choice(reverse=True)),
     AxisOption("Refiner checkpoint", str, apply_field('refiner_checkpoint'), format_value=format_remove_path, confirm=confirm_checkpoints_or_none, cost=1.0, choices=lambda: ['None'] + sorted(sd_models.checkpoints_list, key=str.casefold)),
     AxisOption("Refiner switch at", float, apply_field('refiner_switch_at')),
+    AxisOption("RNG source", str, apply_override("randn_source"), choices=lambda: ["GPU", "CPU", "NV"]),
 ]
 
 
@@ -438,7 +443,6 @@ class Script(scripts.Script):
             with gr.Column():
                 csv_mode = gr.Checkbox(label='Use text inputs instead of dropdowns', value=False, elem_id=self.elem_id("csv_mode"))
 
-
         with gr.Row(variant="compact", elem_id="swap_axes"):
             swap_xy_axes_button = gr.Button(value="Swap X/Y axes", elem_id="xy_grid_swap_axes_button")
             swap_yz_axes_button = gr.Button(value="Swap Y/Z axes", elem_id="yz_grid_swap_axes_button")
@@ -472,19 +476,19 @@ class Script(scripts.Script):
             choices = self.current_axis_options[axis_type].choices
             has_choices = choices is not None
 
-            current_values = axis_values
-            current_dropdown_values = axis_values_dropdown
             if has_choices:
                 choices = choices()
                 if csv_mode:
-                    current_dropdown_values = list(filter(lambda x: x in choices, current_dropdown_values))
-                    current_values = list_to_csv_string(current_dropdown_values)
+                    if axis_values_dropdown:
+                        axis_values = list_to_csv_string(list(filter(lambda x: x in choices, axis_values_dropdown)))
+                        axis_values_dropdown = []
                 else:
-                    current_dropdown_values = [x.strip() for x in chain.from_iterable(csv.reader(StringIO(axis_values)))]
-                    current_dropdown_values = list(filter(lambda x: x in choices, current_dropdown_values))
+                    if axis_values:
+                        axis_values_dropdown = list(filter(lambda x: x in choices, csv_string_to_list_strip(axis_values)))
+                        axis_values = ""
 
-            return (gr.Button.update(visible=has_choices), gr.Textbox.update(visible=not has_choices or csv_mode, value=current_values),
-                    gr.update(choices=choices if has_choices else None, visible=has_choices and not csv_mode, value=current_dropdown_values))
+            return (gr.Button.update(visible=has_choices), gr.Textbox.update(visible=not has_choices or csv_mode, value=axis_values),
+                    gr.update(choices=choices if has_choices else None, visible=has_choices and not csv_mode, value=axis_values_dropdown))
 
         x_type.change(fn=select_axis, inputs=[x_type, x_values, x_values_dropdown, csv_mode], outputs=[fill_x_button, x_values, x_values_dropdown])
         y_type.change(fn=select_axis, inputs=[y_type, y_values, y_values_dropdown, csv_mode], outputs=[fill_y_button, y_values, y_values_dropdown])
@@ -501,7 +505,7 @@ class Script(scripts.Script):
         def get_dropdown_update_from_params(axis, params):
             val_key = f"{axis} Values"
             vals = params.get(val_key, "")
-            valslist = [x.strip() for x in chain.from_iterable(csv.reader(StringIO(vals))) if x]
+            valslist = csv_string_to_list_strip(vals)
             return gr.update(value=valslist)
 
         self.infotext_fields = (
@@ -532,7 +536,7 @@ class Script(scripts.Script):
             if opt.choices is not None and not csv_mode:
                 valslist = vals_dropdown
             else:
-                valslist = [x.strip() for x in chain.from_iterable(csv.reader(StringIO(vals))) if x]
+                valslist = csv_string_to_list_strip(vals)
 
             if opt.type == int:
                 valslist_ext = []
