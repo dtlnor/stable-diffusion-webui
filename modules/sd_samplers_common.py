@@ -95,6 +95,8 @@ def images_tensor_to_samples(image, approximation=None, model=None):
     else:
         if model is None:
             model = shared.sd_model
+        model.first_stage_model.to(devices.dtype_vae)
+
         image = image.to(shared.device, dtype=devices.dtype_vae)
         image = image * 2 - 1
         if len(image) > 1:
@@ -164,8 +166,17 @@ def apply_refiner(cfg_denoiser):
     if refiner_checkpoint_info is None or shared.sd_model.sd_checkpoint_info == refiner_checkpoint_info:
         return False
 
-    if getattr(cfg_denoiser.p, "enable_hr", False) and not cfg_denoiser.p.is_hr_pass:
-        return False
+    if getattr(cfg_denoiser.p, "enable_hr", False):
+        is_second_pass = cfg_denoiser.p.is_hr_pass
+
+        if opts.hires_fix_refiner_pass == "first pass" and is_second_pass:
+            return False
+
+        if opts.hires_fix_refiner_pass == "second pass" and not is_second_pass:
+            return False
+
+        if opts.hires_fix_refiner_pass != "second pass":
+            cfg_denoiser.p.extra_generation_params['Hires refiner'] = opts.hires_fix_refiner_pass
 
     cfg_denoiser.p.extra_generation_params['Refiner'] = refiner_checkpoint_info.short_title
     cfg_denoiser.p.extra_generation_params['Refiner switch at'] = refiner_switch_at
